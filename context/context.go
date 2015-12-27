@@ -37,11 +37,16 @@ import (
 // Http request context struct including BeegoInput, BeegoOutput, http.Request and http.ResponseWriter.
 // BeegoInput and BeegoOutput provides some api to operate request and response more easily.
 type Context struct {
-	Input          *BeegoInput
-	Output         *BeegoOutput
+	// 将Request/Response的输入和输出提取出来，将其余的代码和Request/Writer等独立开来
+	Input  *BeegoInput
+	Output *BeegoOutput
+
+	// 原始的Request/Response
 	Request        *http.Request
 	ResponseWriter http.ResponseWriter
-	_xsrf_token    string
+
+	// XsrfToken
+	_xsrf_token string
 }
 
 // Redirect does redirection to localurl with http header status code.
@@ -55,12 +60,15 @@ func (ctx *Context) Redirect(status int, localurl string) {
 // if beego.ErrorMaps exists, panic body.
 func (ctx *Context) Abort(status int, body string) {
 	ctx.ResponseWriter.WriteHeader(status)
+
+	// 如何控制不导致整个程序退出呢?
 	panic(body)
 }
 
 // Write string to response body.
 // it sends response body.
 func (ctx *Context) WriteString(content string) {
+	// 为什么不使用: Output呢?
 	ctx.ResponseWriter.Write([]byte(content))
 }
 
@@ -93,12 +101,15 @@ func (ctx *Context) GetSecureCookie(Secret, key string) (string, bool) {
 	timestamp := parts[1]
 	sig := parts[2]
 
+	// 验证签名是否OK
 	h := hmac.New(sha1.New, []byte(Secret))
 	fmt.Fprintf(h, "%s%s", vs, timestamp)
 
 	if fmt.Sprintf("%02x", h.Sum(nil)) != sig {
 		return "", false
 	}
+
+	// 如果签名OK, 则认可数据
 	res, _ := base64.URLEncoding.DecodeString(vs)
 	return string(res), true
 }
@@ -138,6 +149,8 @@ func (ctx *Context) CheckXsrfCookie() bool {
 	if token == "" {
 		token = ctx.Request.Header.Get("X-Csrftoken")
 	}
+
+	// 对于POST请求，必须带有有效的token
 	if token == "" {
 		ctx.Abort(403, "'_xsrf' argument missing from POST")
 		return false

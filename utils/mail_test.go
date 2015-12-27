@@ -17,6 +17,7 @@ package utils
 import "testing"
 
 func TestMail(t *testing.T) {
+	// Golang的字符串
 	config := `{"username":"astaxie@gmail.com","password":"astaxie","host":"smtp.gmail.com","port":587}`
 	mail := NewEMail(config)
 	if mail.Username != "astaxie@gmail.com" {
@@ -31,6 +32,8 @@ func TestMail(t *testing.T) {
 	if mail.Port != 587 {
 		t.Fatal("email parse get port error")
 	}
+
+	// 配置好Email之后，调换用发送的API
 	mail.To = []string{"xiemengjun@gmail.com"}
 	mail.From = "astaxie@gmail.com"
 	mail.Subject = "hi, just from beego!"

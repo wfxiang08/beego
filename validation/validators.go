@@ -45,6 +45,9 @@ var MessageTmpls = map[string]string{
 	"ZipCode":      "Must be valid zipcode",
 }
 
+//
+// 定义各种Validator
+//
 type Validator interface {
 	IsSatisfied(interface{}) bool
 	DefaultMessage() string
@@ -61,9 +64,12 @@ func (r Required) IsSatisfied(obj interface{}) bool {
 		return false
 	}
 
+	// 如果是 string, 则长度大于0
 	if str, ok := obj.(string); ok {
 		return len(str) > 0
 	}
+
+	// 为有效的bool, int, Time, 等
 	if _, ok := obj.(bool); ok {
 		return true
 	}

@@ -42,6 +42,11 @@ type UrlMap struct {
 func (m *UrlMap) AddStatistics(requestMethod, requestUrl, requestController string, requesttime time.Duration) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
+
+	// 如何统计呢?
+	// Url --> Method
+	// 如果Url太多，那该怎么处理呢?
+	//
 	if method, ok := m.urlmap[requestUrl]; ok {
 		if s, ok := method[requestMethod]; ok {
 			s.RequestNum += 1

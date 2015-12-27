@@ -23,6 +23,8 @@ type reducetype func(interface{}) interface{}
 type filtertype func(interface{}) bool
 
 // InSlice checks given string in string slice or not.
+// v 是否在 sl 中
+//
 func InSlice(v string, sl []string) bool {
 	for _, vv := range sl {
 		if vv == v {
@@ -44,6 +46,9 @@ func InSliceIface(v interface{}, sl []interface{}) bool {
 
 // SliceRandList generate an int slice from min to max.
 func SliceRandList(min, max int) []int {
+	//
+	// 生成: [min, max]之间元素的permutations
+	//
 	if max < min {
 		min, max = max, min
 	}
@@ -59,6 +64,7 @@ func SliceRandList(min, max int) []int {
 
 // SliceMerge merges interface slices to one slice.
 func SliceMerge(slice1, slice2 []interface{}) (c []interface{}) {
+	// 如何merge slice
 	c = append(slice1, slice2...)
 	return
 }
@@ -66,6 +72,7 @@ func SliceMerge(slice1, slice2 []interface{}) (c []interface{}) {
 // SliceReduce generates a new slice after parsing every value by reduce function
 func SliceReduce(slice []interface{}, a reducetype) (dslice []interface{}) {
 	for _, v := range slice {
+		// 通过: reducetype 来进行 reduce
 		dslice = append(dslice, a(v))
 	}
 	return

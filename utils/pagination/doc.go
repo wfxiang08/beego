@@ -26,7 +26,7 @@ In your beego.Controller:
 
 
 In your view templates:
-
+// 是否有数据
  {{if .paginator.HasPages}}
  <ul class="pagination pagination">
      {{if .paginator.HasPrev}}
@@ -36,6 +36,7 @@ In your view templates:
          <li class="disabled"><a>{{ i18n .Lang "paginator.first_page"}}</a></li>
          <li class="disabled"><a>&laquo;</a></li>
      {{end}}
+
      {{range $index, $page := .paginator.Pages}}
          <li{{if $.paginator.IsActive .}} class="active"{{end}}>
              <a href="{{$.paginator.PageLink $page}}">{{$page}}</a>

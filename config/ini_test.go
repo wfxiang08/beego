@@ -36,6 +36,9 @@ CaseInsensitive = true
 peers = one;two;three
 `
 
+//
+// 注意如何写TestCase
+//
 func TestIni(t *testing.T) {
 	f, err := os.Create("testini.conf")
 	if err != nil {

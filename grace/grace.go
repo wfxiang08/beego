@@ -105,13 +105,14 @@ func NewServer(addr string, handler http.Handler) (srv *graceServer) {
 		socketPtrOffsetMap[addr] = uint(len(runningServersOrder))
 	}
 
+	// 创建: graceServer
 	srv = &graceServer{
 		wg:      sync.WaitGroup{},
 		sigChan: make(chan os.Signal),
 		isChild: isChild,
 		SignalHooks: map[int]map[os.Signal][]func(){
 			PRE_SIGNAL: map[os.Signal][]func(){
-				syscall.SIGHUP:  []func(){},
+				syscall.SIGHUP:  []func(){}, // 默认是一个空的数组
 				syscall.SIGINT:  []func(){},
 				syscall.SIGTERM: []func(){},
 			},
@@ -124,6 +125,8 @@ func NewServer(addr string, handler http.Handler) (srv *graceServer) {
 		state:   STATE_INIT,
 		Network: "tcp",
 	}
+
+	// 自己管理一个httpServer
 	srv.Server = &http.Server{}
 	srv.Server.Addr = addr
 	srv.Server.ReadTimeout = DefaultReadTimeOut
@@ -131,6 +134,9 @@ func NewServer(addr string, handler http.Handler) (srv *graceServer) {
 	srv.Server.MaxHeaderBytes = DefaultMaxHeaderBytes
 	srv.Server.Handler = handler
 
+	// 当前运行的Servers的管理
+	// http和tcp的服务放在一起，降低运维成本
+	//
 	runningServersOrder = append(runningServersOrder, addr)
 	runningServers[addr] = srv
 

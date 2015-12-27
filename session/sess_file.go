@@ -81,19 +81,28 @@ func (fs *FileSessionStore) SessionID() string {
 
 // Write file session to local file with Gob string
 func (fs *FileSessionStore) SessionRelease(w http.ResponseWriter) {
+	// 和 sess_mem相比，最终数据需要序列化到disk上
+	// 1. 编码数据
 	b, err := EncodeGob(fs.values)
 	if err != nil {
 		return
 	}
-	_, err = os.Stat(path.Join(filepder.savePath, string(fs.sid[0]), string(fs.sid[1]), fs.sid))
+
+	// 2.
+	sessionPath := path.Join(filepder.savePath, string(fs.sid[0]), string(fs.sid[1]), fs.sid)
+	_, err = os.Stat(sessionPath)
 	var f *os.File
+
+	// 3. 如果文件存在，或者不存在，则打开的方式不一样
 	if err == nil {
-		f, err = os.OpenFile(path.Join(filepder.savePath, string(fs.sid[0]), string(fs.sid[1]), fs.sid), os.O_RDWR, 0777)
+		f, err = os.OpenFile(sessionPath, os.O_RDWR, 0777)
 	} else if os.IsNotExist(err) {
-		f, err = os.Create(path.Join(filepder.savePath, string(fs.sid[0]), string(fs.sid[1]), fs.sid))
+		f, err = os.Create(sessionPath)
 	} else {
 		return
 	}
+
+	// 4. 从0开始写文件
 	f.Truncate(0)
 	f.Seek(0, 0)
 	f.Write(b)
@@ -122,10 +131,13 @@ func (fp *FileProvider) SessionRead(sid string) (SessionStore, error) {
 	filepder.lock.Lock()
 	defer filepder.lock.Unlock()
 
+	// 1. 首先确保对应的目录存在(直接MkdirAll)
 	err := os.MkdirAll(path.Join(fp.savePath, string(sid[0]), string(sid[1])), 0777)
 	if err != nil {
 		println(err.Error())
 	}
+
+	// 2. 获取文件的打开方式
 	_, err = os.Stat(path.Join(fp.savePath, string(sid[0]), string(sid[1]), sid))
 	var f *os.File
 	if err == nil {
@@ -135,7 +147,10 @@ func (fp *FileProvider) SessionRead(sid string) (SessionStore, error) {
 	} else {
 		return nil, err
 	}
+	// 3. 修改Chtimes
 	os.Chtimes(path.Join(fp.savePath, string(sid[0]), string(sid[1]), sid), time.Now(), time.Now())
+
+	// 读取Session数据
 	var kv map[interface{}]interface{}
 	b, err := ioutil.ReadAll(f)
 	if err != nil {

@@ -30,6 +30,9 @@ import (
 	"unicode"
 )
 
+// import _ "github.com/astaxie/beego/config/xml"
+// 如何导入驱动呢? 只需要import, 而不需要导入具体的东西
+//
 var (
 	DEFAULT_SECTION = "default"   // default section means if some ini items not in a section, make them in default section,
 	bNumComment     = []byte{'#'} // number signal
@@ -57,6 +60,7 @@ func (ini *IniConfig) parseFile(name string) (*IniConfigContainer, error) {
 		return nil, err
 	}
 
+	// 初始化时不指定Key, 按照定义的顺序来初始化
 	cfg := &IniConfigContainer{
 		file.Name(),
 		make(map[string]map[string]string),
@@ -68,15 +72,19 @@ func (ini *IniConfig) parseFile(name string) (*IniConfigContainer, error) {
 	defer cfg.Unlock()
 	defer file.Close()
 
+	// 学习go的文件的读写:
 	var comment bytes.Buffer
 	buf := bufio.NewReader(file)
+
 	// check the BOM
+	// Peek && ReadByte
 	head, err := buf.Peek(3)
 	if err == nil && head[0] == 239 && head[1] == 187 && head[2] == 191 {
 		for i := 1; i <= 3; i++ {
 			buf.ReadByte()
 		}
 	}
+
 	section := DEFAULT_SECTION
 	for {
 		line, _, err := buf.ReadLine()
@@ -95,6 +103,7 @@ func (ini *IniConfig) parseFile(name string) (*IniConfigContainer, error) {
 		case bytes.HasPrefix(line, bSemComment):
 			bComment = bSemComment
 		}
+		// # ; 开头的
 		if bComment != nil {
 			line = bytes.TrimLeft(line, string(bComment))
 			line = bytes.TrimLeftFunc(line, unicode.IsSpace)
@@ -102,13 +111,15 @@ func (ini *IniConfig) parseFile(name string) (*IniConfigContainer, error) {
 			comment.WriteByte('\n')
 			continue
 		}
-
+		// [ ]
 		if bytes.HasPrefix(line, sectionStart) && bytes.HasSuffix(line, sectionEnd) {
 			section = strings.ToLower(string(line[1 : len(line)-1])) // section name case insensitive
 			if comment.Len() > 0 {
 				cfg.sectionComment[section] = comment.String()
 				comment.Reset()
 			}
+
+			// 初始化: data[section]
 			if _, ok := cfg.data[section]; !ok {
 				cfg.data[section] = make(map[string]string)
 			}
@@ -135,6 +146,8 @@ func (ini *IniConfig) parseFile(name string) (*IniConfigContainer, error) {
 				if err != nil {
 					return nil, err
 				}
+
+				// 实现数据的拷贝: 将被include的数据拷贝到当前的config中
 				for sec, dt := range i.data {
 					if _, ok := cfg.data[sec]; !ok {
 						cfg.data[sec] = make(map[string]string)
@@ -156,11 +169,17 @@ func (ini *IniConfig) parseFile(name string) (*IniConfigContainer, error) {
 		if len(keyValue) != 2 {
 			return nil, errors.New("read the content error: \"" + string(line) + "\", should key = val")
 		}
+
+		// 这里为什么要使用""呢? 是为了引入额外的Space等?
 		val := bytes.TrimSpace(keyValue[1])
 		if bytes.HasPrefix(val, bDQuote) {
 			val = bytes.Trim(val, `"`)
 		}
 
+		// 格式:
+		// ;Comment Content
+		// key = value
+		// 那么上面的Commment就是key对应的Comment
 		cfg.data[section][key] = string(val)
 		if comment.Len() > 0 {
 			cfg.keyComment[section+"."+key] = comment.String()
@@ -172,12 +191,15 @@ func (ini *IniConfig) parseFile(name string) (*IniConfigContainer, error) {
 }
 
 func (ini *IniConfig) ParseData(data []byte) (ConfigContainer, error) {
+	// 接口的Adapter, 将数据保存在临时文件中，也不用考虑什么时候删除
 	// Save memory data to temporary file
 	tmpName := path.Join(os.TempDir(), "beego", fmt.Sprintf("%d", time.Now().Nanosecond()))
 	os.MkdirAll(path.Dir(tmpName), os.ModePerm)
 	if err := ioutil.WriteFile(tmpName, data, 0655); err != nil {
 		return nil, err
 	}
+
+	//
 	return ini.Parse(tmpName)
 }
 
@@ -191,6 +213,9 @@ type IniConfigContainer struct {
 	sync.RWMutex
 }
 
+// strconv 似乎性能出奇地低
+// 不过低频场合倒是随便用
+//
 // Bool returns the boolean value for a given key.
 func (c *IniConfigContainer) Bool(key string) (bool, error) {
 	return strconv.ParseBool(c.getdata(key))
@@ -417,6 +442,10 @@ func (c *IniConfigContainer) getdata(key string) string {
 		section, k string
 		sectionKey []string = strings.Split(strings.ToLower(key), "::")
 	)
+	// 如何理解 Key?
+	// default_section + key
+	// section::key
+	//
 	if len(sectionKey) >= 2 {
 		section = sectionKey[0]
 		k = sectionKey[1]
@@ -432,6 +461,7 @@ func (c *IniConfigContainer) getdata(key string) string {
 	return ""
 }
 
+// 注册: ini驱动
 func init() {
 	Register("ini", &IniConfig{})
 }

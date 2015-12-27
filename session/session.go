@@ -37,6 +37,9 @@ import (
 	"time"
 )
 
+// session的作用:
+// 在router.go中提供: context.Input.CruSession
+//
 // SessionStore contains all data for one session process with specific id.
 type SessionStore interface {
 	Set(key, value interface{}) error     //set session value
@@ -165,6 +168,7 @@ func (manager *Manager) SessionStart(w http.ResponseWriter, r *http.Request) (se
 			return nil, errs
 		}
 		if manager.provider.SessionExist(sid) {
+			// 获取Session
 			session, err = manager.provider.SessionRead(sid)
 		} else {
 			sid, err = manager.sessionId(r)

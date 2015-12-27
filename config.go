@@ -216,15 +216,24 @@ func (b *beegoAppConfig) SaveConfigFile(filename string) error {
 
 func init() {
 	// create beego application
+	// BeeApp为单例， 如何工作呢?
 	BeeApp = NewApp()
 
+	// WD如何定义?
 	workPath, _ = os.Getwd()
 	workPath, _ = filepath.Abs(workPath)
+
+	// 当前App的Dir, 即是: AppPath
 	// initialize default configurations
 	AppPath, _ = filepath.Abs(filepath.Dir(os.Args[0]))
 
 	AppConfigPath = filepath.Join(AppPath, "conf", "app.conf")
 
+	// WorkPath和AppPath的关系
+	// 优先考虑: AppPath, 如果满足条件(存在配置文件), 那么以AppPath为准
+	// 否则以: WorkPath为准
+	// 很奇怪!!!
+	//
 	if workPath != AppPath {
 		if utils.FileExists(AppConfigPath) {
 			os.Chdir(AppPath)

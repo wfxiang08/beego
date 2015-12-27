@@ -20,6 +20,9 @@ import (
 	"time"
 )
 
+//
+// Requrired的定义
+//
 func TestRequired(t *testing.T) {
 	valid := Validation{}
 
@@ -301,11 +304,14 @@ func TestZipCode(t *testing.T) {
 }
 
 func TestValid(t *testing.T) {
+	// 临时定义一个数据类型
 	type user struct {
 		Id   int
 		Name string `valid:"Required;Match(/^(test)?\\w*@(/test/);com$/)"`
 		Age  int    `valid:"Required;Range(1, 140)"`
 	}
+
+	// 现在进行集成测试
 	valid := Validation{}
 
 	u := user{Name: "test@/test/;com", Age: 40}
@@ -317,6 +323,7 @@ func TestValid(t *testing.T) {
 		t.Error("validation should be passed")
 	}
 
+	// 注意: Clear
 	uptr := &user{Name: "test", Age: 40}
 	valid.Clear()
 	b, err = valid.Valid(uptr)

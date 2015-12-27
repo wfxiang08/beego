@@ -55,6 +55,8 @@ func (output *BeegoOutput) Header(key, val string) {
 // it sends out response body directly.
 func (output *BeegoOutput) Body(content []byte) {
 	output_writer := output.Context.ResponseWriter.(io.Writer)
+	// 如何支持: Content-Encoding
+	// 在默认的Writer基础上，添加一个 Decorator, 实现gzip, deflate功能
 	if output.EnableGzip == true && output.Context.Input.Header("Accept-Encoding") != "" {
 		splitted := strings.SplitN(output.Context.Input.Header("Accept-Encoding"), ",", -1)
 		encodings := make([]string, len(splitted))
@@ -75,6 +77,7 @@ func (output *BeegoOutput) Body(content []byte) {
 			}
 		}
 	} else {
+		// 普通的编码需要制定: Content-Length
 		output.Header("Content-Length", strconv.Itoa(len(content)))
 	}
 
@@ -86,11 +89,15 @@ func (output *BeegoOutput) Body(content []byte) {
 	}
 
 	output_writer.Write(content)
+
 	switch output_writer.(type) {
 	case *gzip.Writer:
 		output_writer.(*gzip.Writer).Close()
 	case *flate.Writer:
 		output_writer.(*flate.Writer).Close()
+
+		// TODO: 默认的writer是否需要关闭呢?
+		// 上面的两个Writer不close the underlying writer
 	}
 }
 
@@ -100,29 +107,29 @@ func (output *BeegoOutput) Cookie(name string, value string, others ...interface
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "%s=%s", sanitizeName(name), sanitizeValue(value))
 
-    //fix cookie not work in IE
-    if len(others) > 0 {
-        switch v := others[0].(type) {
-            case int:
-            if v > 0 {
-                fmt.Fprintf(&b, "; Expires=%s; Max-Age=%d", time.Now().Add(time.Duration(v) * time.Second).UTC().Format(time.RFC1123), v)
-            } else if v < 0 {
-                fmt.Fprintf(&b, "; Max-Age=0")
-            }
-            case int64:
-            if v > 0 {
-                fmt.Fprintf(&b, "; Expires=%s; Max-Age=%d", time.Now().Add(time.Duration(v) * time.Second).UTC().Format(time.RFC1123), v)
-            } else if v < 0 {
-                fmt.Fprintf(&b, "; Max-Age=0")
-            }
-            case int32:
-            if v > 0 {
-                fmt.Fprintf(&b, "; Expires=%s; Max-Age=%d", time.Now().Add(time.Duration(v) * time.Second).UTC().Format(time.RFC1123), v)
-            } else if v < 0 {
-                fmt.Fprintf(&b, "; Max-Age=0")
-            }
-        }
-    }
+	//fix cookie not work in IE
+	if len(others) > 0 {
+		switch v := others[0].(type) {
+		case int:
+			if v > 0 {
+				fmt.Fprintf(&b, "; Expires=%s; Max-Age=%d", time.Now().Add(time.Duration(v)*time.Second).UTC().Format(time.RFC1123), v)
+			} else if v < 0 {
+				fmt.Fprintf(&b, "; Max-Age=0")
+			}
+		case int64:
+			if v > 0 {
+				fmt.Fprintf(&b, "; Expires=%s; Max-Age=%d", time.Now().Add(time.Duration(v)*time.Second).UTC().Format(time.RFC1123), v)
+			} else if v < 0 {
+				fmt.Fprintf(&b, "; Max-Age=0")
+			}
+		case int32:
+			if v > 0 {
+				fmt.Fprintf(&b, "; Expires=%s; Max-Age=%d", time.Now().Add(time.Duration(v)*time.Second).UTC().Format(time.RFC1123), v)
+			} else if v < 0 {
+				fmt.Fprintf(&b, "; Max-Age=0")
+			}
+		}
+	}
 
 	// the settings below
 	// Path, Domain, Secure, HttpOnly
@@ -191,6 +198,7 @@ func sanitizeValue(v string) string {
 // Json writes json to response body.
 // if coding is true, it converts utf-8 to \u0000 type.
 func (output *BeegoOutput) Json(data interface{}, hasIndent bool, coding bool) error {
+	// 将data转换成为 JSON
 	output.Header("Content-Type", "application/json; charset=utf-8")
 	var content []byte
 	var err error
@@ -228,6 +236,10 @@ func (output *BeegoOutput) Jsonp(data interface{}, hasIndent bool) error {
 	if callback == "" {
 		return errors.New(`"callback" parameter required`)
 	}
+
+	// 返回 ：
+	// callback(json_response);
+	//
 	callback_content := bytes.NewBufferString(" " + template.JSEscapeString(callback))
 	callback_content.WriteString("(")
 	callback_content.Write(content)

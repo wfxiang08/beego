@@ -13,6 +13,9 @@
 // limitations under the License.
 
 // beego is an open-source, high-performance, modularity, full-stack web framework
+// beego是如何运行的呢?
+// 1. 直接调用: beego.run, 然后根据router配置整个项目就可以跑起来了
+// 2. Router的配置是直接将我们所要的数据注入: router中
 //
 // package main
 //
@@ -259,6 +262,11 @@ func AddAPPStartHook(hf hookfunc) {
 // beego.Run(":8089")
 // beego.Run("127.0.0.1:8089")
 func Run(params ...string) {
+	// A. Run如何执行呢?
+	// 1. 参数: ip + 端口(只能绑定到一个ip/port)
+	// 2. 在config.go中定义了变量: HttpAddr, HttpPort, 默认是从配置文件中读取
+	// 3. 如果params指定了ip/port, 则覆盖配置文件中的定义
+	//
 	if len(params) > 0 && params[0] != "" {
 		strs := strings.Split(params[0], ":")
 		if len(strs) > 0 && strs[0] != "" {
@@ -268,12 +276,15 @@ func Run(params ...string) {
 			HttpPort, _ = strconv.Atoi(strs[1])
 		}
 	}
+
 	initBeforeHttpRun()
 
+	// C. 启动Admin和BeeApp
 	if EnableAdmin {
 		go beeAdminApp.Run()
 	}
 
+	// 在config.go中定义
 	BeeApp.Run()
 }
 
@@ -310,11 +321,15 @@ func initBeforeHttpRun() {
 				`"domain":"` + SessionDomain + `",` +
 				`"cookieLifeTime":` + strconv.Itoa(SessionCookieLifeTime) + `}`
 		}
-		GlobalSessions, err = session.NewManager(SessionProvider,
-			sessionConfig)
+		// SessionProvider默认为: memory, 也就是进程重启之后就没了
+		// 参考: http://beego.me/docs/mvc/controller/session.md
+		GlobalSessions, err = session.NewManager(SessionProvider, sessionConfig)
+
 		if err != nil {
 			panic(err)
 		}
+
+		// GC: 就删除过期的Session的数据
 		go GlobalSessions.GC()
 	}
 

@@ -20,11 +20,14 @@ import (
 )
 
 func ExampleGetInt() {
-
+	// 构建: Input和 Context
 	i := &context.BeegoInput{Params: map[string]string{"age": "40"}}
 	ctx := &context.Context{Input: i}
+
+	// 构建base的Controller
 	ctrlr := Controller{Ctx: ctx}
 
+	// 格式 GetInt等函数
 	val, _ := ctrlr.GetInt("age")
 	fmt.Printf("%T", val)
 	//Output: int

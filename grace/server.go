@@ -15,6 +15,9 @@ import (
 	"time"
 )
 
+// http://beego.me/docs/module/grace.md
+// 如何处理热升级呢?
+//
 type graceServer struct {
 	*http.Server
 	GraceListener    net.Listener
@@ -22,7 +25,7 @@ type graceServer struct {
 	tlsInnerListener *graceListener
 	wg               sync.WaitGroup
 	sigChan          chan os.Signal
-	isChild          bool
+	isChild          bool // 来自命令行参数: graceful, 默认为false, 如果为Fork出来的，则为true
 	state            uint8
 	Network          string
 }
@@ -32,6 +35,8 @@ type graceServer struct {
 // The service goroutines read requests and then call srv.Handler to reply to them.
 func (srv *graceServer) Serve() (err error) {
 	srv.state = STATE_RUNNING
+	// 启动Server, 然后等待结束
+	// 注意: srv.GraceListener 的使用
 	err = srv.Server.Serve(srv.GraceListener)
 	log.Println(syscall.Getpid(), "Waiting for connections to finish...")
 	srv.wg.Wait()
@@ -48,8 +53,10 @@ func (srv *graceServer) ListenAndServe() (err error) {
 		addr = ":http"
 	}
 
+	// 1. 处理信号
 	go srv.handleSignals()
 
+	// 2. 创建: Listener
 	l, err := srv.getListener(addr)
 	if err != nil {
 		log.Println(err)
@@ -58,18 +65,24 @@ func (srv *graceServer) ListenAndServe() (err error) {
 
 	srv.GraceListener = newGraceListener(l, srv)
 
+	// 3. Child起来了，然后就准备杀死Parent Process; 如果整个过程出现问题，则直接退出
 	if srv.isChild {
 		process, err := os.FindProcess(os.Getppid())
 		if err != nil {
 			log.Println(err)
 			return err
 		}
+		//
+		// kill -9
+		// 怎么这么粗暴呢? Graceful如何体现？ 之前没有处理完毕的请求如何继续处理
+		//
 		err = process.Kill()
 		if err != nil {
 			return err
 		}
 	}
 
+	// 4. 继续未尽的事业
 	log.Println(os.Getpid(), srv.Addr)
 	return srv.Serve()
 }
@@ -133,19 +146,24 @@ func (srv *graceServer) ListenAndServeTLS(certFile, keyFile string) (err error) 
 // it got passed when restarted.
 func (srv *graceServer) getListener(laddr string) (l net.Listener, err error) {
 	if srv.isChild {
+		// 获取: laddr 对应的 socketPtr
 		var ptrOffset uint = 0
 		if len(socketPtrOffsetMap) > 0 {
 			ptrOffset = socketPtrOffsetMap[laddr]
 			log.Println("laddr", laddr, "ptr offset", socketPtrOffsetMap[laddr])
 		}
 
+		// 3 + 什么意思呢?
 		f := os.NewFile(uintptr(3+ptrOffset), "")
+
+		// 从文件获取: listener(太牛逼了)
 		l, err = net.FileListener(f)
 		if err != nil {
 			err = fmt.Errorf("net.FileListener error: %v", err)
 			return
 		}
 	} else {
+		// 正常创建 Listener
 		l, err = net.Listen(srv.Network, laddr)
 		if err != nil {
 			err = fmt.Errorf("net.Listen error: %v", err)
@@ -160,6 +178,10 @@ func (srv *graceServer) getListener(laddr string) (l net.Listener, err error) {
 func (srv *graceServer) handleSignals() {
 	var sig os.Signal
 
+	// 监听信号: SIGHUP, SIGINT, SIGTERM
+	// kill -1
+	// kill -2
+	// kill -15
 	signal.Notify(
 		srv.sigChan,
 		syscall.SIGHUP,
@@ -170,14 +192,19 @@ func (srv *graceServer) handleSignals() {
 	pid := syscall.Getpid()
 	for {
 		sig = <-srv.sigChan
+		// 通过Hooks来处理信号
 		srv.signalHooks(PRE_SIGNAL, sig)
+
 		switch sig {
 		case syscall.SIGHUP:
 			log.Println(pid, "Received SIGHUP. forking.")
+
+			// fork
 			err := srv.fork()
 			if err != nil {
 				log.Println("Fork err:", err)
 			}
+			// kill -2, kill -15, 关闭当前的进程
 		case syscall.SIGINT:
 			log.Println(pid, "Received SIGINT.")
 			srv.shutdown()
@@ -243,16 +270,29 @@ func (srv *graceServer) serverTimeout(d time.Duration) {
 	}
 }
 
+// 如何fork呢?
+// go的fork似乎不太好做?
 func (srv *graceServer) fork() (err error) {
 	regLock.Lock()
 	defer regLock.Unlock()
+
+	// 防止多次重复处理
 	if runningServersForked {
 		return
 	}
 	runningServersForked = true
 
+	// 注意: runningServers的定义
 	var files = make([]*os.File, len(runningServers))
 	var orderArgs = make([]string, len(runningServers))
+
+	// https, http
+	// https ---> 1 --> file1
+	// http  ---> 2 --> file2
+	// files: [file1, file2]
+	// orderArgs:  -socketorder=https_addres,http_address
+	// 细节: http://grisha.org/blog/2014/06/03/graceful-restart-in-golang/
+	//
 	for _, srvPtr := range runningServers {
 		switch srvPtr.GraceListener.(type) {
 		case *graceListener:
@@ -279,6 +319,7 @@ func (srv *graceServer) fork() (err error) {
 		args = append(args, fmt.Sprintf(`-socketorder=%s`, strings.Join(orderArgs, ",")))
 		log.Println(args)
 	}
+	// 启动一个新的进程！！
 	cmd := exec.Command(path, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

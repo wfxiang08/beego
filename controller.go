@@ -55,6 +55,7 @@ type ControllerComments struct {
 
 // Controller defines some basic http request handler operations, such as
 // http context, template and view, session and xsrf.
+// 参考: http://beego.me/docs/quickstart/controller.md
 type Controller struct {
 	Ctx            *context.Context
 	Data           map[interface{}]interface{}
@@ -63,10 +64,10 @@ type Controller struct {
 	TplNames       string
 	Layout         string
 	LayoutSections map[string]string // the key is the section name and the value is the template name
-	TplExt         string
+	TplExt         string            // 模板的扩展名， 默认为: "tpl"
 	_xsrf_token    string
 	gotofunc       string
-	CruSession     session.SessionStore
+	CruSession     session.SessionStore // Session的管理
 	XSRFExpire     int
 	AppController  interface{}
 	EnableRender   bool
@@ -178,6 +179,7 @@ func (c *Controller) Render() error {
 	}
 	rb, err := c.RenderBytes()
 
+	// 直接以 text/html 格式进行Render, 并返回
 	if err != nil {
 		return err
 	} else {
@@ -233,6 +235,10 @@ func (c *Controller) RenderBytes() ([]byte, error) {
 			}
 		}
 
+		// 如果存在Layout, 那么是如何工作的呢?
+		// <sectionName, sectionTpl>
+		// LayoutContent
+		// ---> Layout Template
 		ibytes := bytes.NewBufferString("")
 		err = BeeTemplates[c.Layout].ExecuteTemplate(ibytes, c.Layout, c.Data)
 		if err != nil {
@@ -242,16 +248,22 @@ func (c *Controller) RenderBytes() ([]byte, error) {
 		icontent, _ := ioutil.ReadAll(ibytes)
 		return icontent, nil
 	} else {
+		// 什么是: actionName ?
 		if c.TplNames == "" {
 			c.TplNames = strings.ToLower(c.controllerName) + "/" + strings.ToLower(c.actionName) + "." + c.TplExt
 		}
+
+		// 在测试模式下，Template会重建，便于调试
 		if RunMode == "dev" {
 			BuildTemplate(ViewsPath)
 		}
 		ibytes := bytes.NewBufferString("")
+
+		// 获取Templates
 		if _, ok := BeeTemplates[c.TplNames]; !ok {
 			panic("can't find templatefile in the path:" + c.TplNames)
 		}
+		//  XXX: 执行Template
 		err := BeeTemplates[c.TplNames].ExecuteTemplate(ibytes, c.TplNames, c.Data)
 		if err != nil {
 			Trace("template Execute err:", err)
@@ -310,11 +322,15 @@ func (c *Controller) UrlFor(endpoint string, values ...interface{}) string {
 func (c *Controller) ServeJson(encoding ...bool) {
 	var hasIndent bool
 	var hasencoding bool
+
+	// 注意RunMode的区别对待
 	if RunMode == "prod" {
 		hasIndent = false
 	} else {
 		hasIndent = true
 	}
+
+	// encoding的意义?
 	if len(encoding) > 0 && encoding[0] == true {
 		hasencoding = true
 	}
@@ -346,6 +362,7 @@ func (c *Controller) ServeXml() {
 // ServeFormatted serve Xml OR Json, depending on the value of the Accept header
 func (c *Controller) ServeFormatted() {
 	accept := c.Ctx.Input.Header("Accept")
+	// 默认对外以JSON格式提供服务, 也可以考虑: XML等
 	switch accept {
 	case applicationJson:
 		c.ServeJson()
@@ -569,6 +586,8 @@ func (c *Controller) SetSession(name interface{}, value interface{}) {
 
 // GetSession gets value from session.
 func (c *Controller) GetSession(name interface{}) interface{} {
+	// context.Input.CruSession, err = GlobalSessions.SessionStart(w, r)
+	// 在router.go中设置了Session
 	if c.CruSession == nil {
 		c.StartSession()
 	}
@@ -640,8 +659,7 @@ func (c *Controller) CheckXsrfCookie() bool {
 
 // XsrfFormHtml writes an input field contains xsrf token value.
 func (c *Controller) XsrfFormHtml() string {
-	return "<input type=\"hidden\" name=\"_xsrf\" value=\"" +
-		c._xsrf_token + "\"/>"
+	return "<input type=\"hidden\" name=\"_xsrf\" value=\"" + c._xsrf_token + "\"/>"
 }
 
 // GetControllerAndAction gets the executing controller name and action name.

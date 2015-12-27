@@ -52,10 +52,11 @@ var redisPool chan redis.Conn
 
 // redis session store
 type RedisSessionStore struct {
+	// Redis的连接(注意使用的是Pool)
 	p           *redis.Pool
 	sid         string
 	lock        sync.RWMutex
-	values      map[interface{}]interface{}
+	values      map[interface{}]interface{} // Session中的values, 在操作过程中是没有序列化的
 	maxlifetime int64
 }
 
@@ -101,7 +102,7 @@ func (rs *RedisSessionStore) SessionID() string {
 
 // save session values to redis
 func (rs *RedisSessionStore) SessionRelease(w http.ResponseWriter) {
-	c := rs.p.Get()
+	c := rs.p.Get() // 获取一个Connection, 最后还回来
 	defer c.Close()
 
 	b, err := session.EncodeGob(rs.values)
@@ -119,7 +120,7 @@ type RedisProvider struct {
 	poolsize    int
 	password    string
 	dbNum       int
-	poollist    *redis.Pool
+	poollist    *redis.Pool // Redis Pool的使用
 }
 
 // init redis session
@@ -154,6 +155,8 @@ func (rp *RedisProvider) SessionInit(maxlifetime int64, savePath string) error {
 	} else {
 		rp.dbNum = 0
 	}
+
+	// 构建Redis Pool
 	rp.poollist = redis.NewPool(func() (redis.Conn, error) {
 		c, err := redis.Dial("tcp", rp.savePath)
 		if err != nil {
@@ -178,9 +181,12 @@ func (rp *RedisProvider) SessionInit(maxlifetime int64, savePath string) error {
 
 // read redis session by sid
 func (rp *RedisProvider) SessionRead(sid string) (session.SessionStore, error) {
+	// 如何读取Session呢?
+	// 1. 获取一个Redis Connection(从poollist中读取)
 	c := rp.poollist.Get()
 	defer c.Close()
 
+	// 2. 读取Redis的数据
 	kvs, err := redis.String(c.Do("GET", sid))
 	var kv map[interface{}]interface{}
 	if len(kvs) == 0 {
@@ -192,6 +198,7 @@ func (rp *RedisProvider) SessionRead(sid string) (session.SessionStore, error) {
 		}
 	}
 
+	// 3. 构建: RedisSessionStore
 	rs := &RedisSessionStore{p: rp.poollist, sid: sid, values: kv, maxlifetime: rp.maxlifetime}
 	return rs, nil
 }

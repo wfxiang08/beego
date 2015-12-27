@@ -370,6 +370,8 @@ func (b *BeegoHttpRequest) getResponse() (*http.Response, error) {
 	if b.resp.StatusCode != 0 {
 		return b.resp, nil
 	}
+
+	// 发送Http请求
 	resp, err := b.SendOut()
 	if err != nil {
 		return nil, err

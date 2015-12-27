@@ -27,12 +27,14 @@ type user struct {
 	match string `valid:"Required; Match(/^(test)?\\w*@(/test/);com$/);Max(2)"`
 }
 
+// 测试获取validFuncs
 func TestGetValidFuncs(t *testing.T) {
 	u := user{Name: "test", Age: 1}
 	tf := reflect.TypeOf(u)
 	var vfs []ValidFunc
 	var err error
 
+	// 1. Id没有ValidFunc
 	f, _ := tf.FieldByName("Id")
 	if vfs, err = getValidFuncs(f); err != nil {
 		t.Fatal(err)
@@ -41,11 +43,13 @@ func TestGetValidFuncs(t *testing.T) {
 		t.Fatal("should get none ValidFunc")
 	}
 
+	// 2. Tag: 指定了错误的Func
 	f, _ = tf.FieldByName("Tag")
 	if vfs, err = getValidFuncs(f); err.Error() != "doesn't exsits Maxx valid function" {
 		t.Fatal(err)
 	}
 
+	// 3. Name
 	f, _ = tf.FieldByName("Name")
 	if vfs, err = getValidFuncs(f); err != nil {
 		t.Fatal(err)
@@ -57,6 +61,7 @@ func TestGetValidFuncs(t *testing.T) {
 		t.Error("Required funcs should be got")
 	}
 
+	// 4. Age
 	f, _ = tf.FieldByName("Age")
 	if vfs, err = getValidFuncs(f); err != nil {
 		t.Fatal(err)
@@ -80,6 +85,9 @@ func TestGetValidFuncs(t *testing.T) {
 	}
 }
 
+//
+// 测试验证函数
+//
 func TestCall(t *testing.T) {
 	u := user{Name: "test", Age: 180}
 	tf := reflect.TypeOf(u)
@@ -89,8 +97,13 @@ func TestCall(t *testing.T) {
 	if vfs, err = getValidFuncs(f); err != nil {
 		t.Fatal(err)
 	}
+
+	// 获取到vfs之后如何执行呢?
 	valid := &Validation{}
+	// 构建完整的参数
 	vfs[1].Params = append([]interface{}{valid, u.Age}, vfs[1].Params...)
+
+	// 执行validator
 	if _, err = funcs.Call(vfs[1].Name, vfs[1].Params...); err != nil {
 		t.Fatal(err)
 	}

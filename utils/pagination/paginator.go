@@ -61,6 +61,8 @@ func (p *Paginator) Page() int {
 	if p.page != 0 {
 		return p.page
 	}
+
+	// Form：分页参数如何获取?
 	if p.Request.Form == nil {
 		p.Request.ParseForm()
 	}
@@ -88,14 +90,21 @@ func (p *Paginator) Pages() []int {
 		var pages []int
 		pageNums := p.PageNums()
 		page := p.Page()
+		// page和pageNums的关系
 		switch {
 		case page >= pageNums-4 && pageNums > 9:
 			start := pageNums - 9 + 1
+
+			// 期望获取9个pages
+			// pageNums - 9 + 1, pageNum
+			// 处理最右端的极限情况
 			pages = make([]int, 9)
 			for i := range pages {
 				pages[i] = start + i
 			}
 		case page >= 5 && pageNums > 9:
+			// 处理中间情况:
+			// page - 4, page, page + 4
 			start := page - 5 + 1
 			pages = make([]int, int(math.Min(9, float64(page+4+1))))
 			for i := range pages {
@@ -180,6 +189,8 @@ func (p *Paginator) HasPages() bool {
 func NewPaginator(req *http.Request, per int, nums interface{}) *Paginator {
 	p := Paginator{}
 	p.Request = req
+
+	// 设置分页信息
 	if per <= 0 {
 		per = 10
 	}

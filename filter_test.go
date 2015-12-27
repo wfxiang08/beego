@@ -22,6 +22,9 @@ import (
 	"github.com/astaxie/beego/context"
 )
 
+// 如何读取参数?
+// 如何定义一个Filter
+//
 var FilterUser = func(ctx *context.Context) {
 	ctx.Output.Body([]byte("i am " + ctx.Input.Params[":last"] + ctx.Input.Params[":first"]))
 }
@@ -29,9 +32,12 @@ var FilterUser = func(ctx *context.Context) {
 func TestFilter(t *testing.T) {
 	r, _ := http.NewRequest("GET", "/person/asta/Xie", nil)
 	w := httptest.NewRecorder()
+
 	handler := NewControllerRegister()
+	// 添加Filter
 	handler.InsertFilter("/person/:last/:first", BeforeRouter, FilterUser)
-	handler.Add("/person/:last/:first", &TestController{})
+	// 添加Handler
+	handler.Add("/person/:last/:first", &TestController{}) // 访问默认的GET
 	handler.ServeHTTP(w, r)
 	if w.Body.String() != "i am astaXie" {
 		t.Errorf("user define func can't run")

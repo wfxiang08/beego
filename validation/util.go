@@ -57,8 +57,8 @@ func init() {
 
 // Valid function type
 type ValidFunc struct {
-	Name   string
-	Params []interface{}
+	Name   string        // 函数名
+	Params []interface{} // 对应的参数
 }
 
 // Validate function map
@@ -71,10 +71,14 @@ func (f Funcs) Call(name string, params ...interface{}) (result []reflect.Value,
 			err = fmt.Errorf("%v", r)
 		}
 	}()
+
+	// 获取对应的Validator
 	if _, ok := f[name]; !ok {
 		err = fmt.Errorf("%s does not exist", name)
 		return
 	}
+
+	// 参数化个数
 	if len(params) != f[name].Type().NumIn() {
 		err = fmt.Errorf("The number of params is not adapted")
 		return
@@ -96,10 +100,18 @@ func isStructPtr(t reflect.Type) bool {
 }
 
 func getValidFuncs(f reflect.StructField) (vfs []ValidFunc, err error) {
+	// 例如: `valid:"Required;Match(/^(test)?\\w*@(/test/);com$/)"`
+	// VALIDTAG = valid
+	// tag: Required;Match(/^(test)?\\w*@(/test/);com$/)
+	// 1. Field的Tag属性
 	tag := f.Tag.Get(VALIDTAG)
 	if len(tag) == 0 {
 		return
 	}
+
+	// 获取Match(Match相对复杂)
+	// Required;Match(/^(test)?\\w*@(/test/);com$/)
+	// Required;Range
 	if vfs, tag, err = getRegFuncs(tag, f.Name); err != nil {
 		fmt.Printf("%+v\n", err)
 		return
@@ -110,6 +122,9 @@ func getValidFuncs(f reflect.StructField) (vfs []ValidFunc, err error) {
 		if len(vfunc) == 0 {
 			continue
 		}
+
+		// vs是什么东西呢?
+		// Required;Range(1, 140)
 		vf, err = parseFunc(vfunc, f.Name)
 		if err != nil {
 			return
@@ -149,6 +164,8 @@ func parseFunc(vfunc, key string) (v ValidFunc, err error) {
 		}
 	}()
 
+	// Required
+	// Range(1, 140)
 	vfunc = strings.TrimSpace(vfunc)
 	start := strings.Index(vfunc, "(")
 	var num int
@@ -162,6 +179,7 @@ func parseFunc(vfunc, key string) (v ValidFunc, err error) {
 			err = fmt.Errorf("%s require %d parameters", vfunc, num)
 			return
 		}
+		// 没有参数的Validator
 		v = ValidFunc{vfunc, []interface{}{key + "." + vfunc}}
 		return
 	}
@@ -184,10 +202,14 @@ func parseFunc(vfunc, key string) (v ValidFunc, err error) {
 		return
 	}
 
+	// Range(1, 140)
+	// name: Range
+	// params: 1, 160
 	tParams, err := trim(name, key+"."+name, params)
 	if err != nil {
 		return
 	}
+
 	v = ValidFunc{name, tParams}
 	return
 }
@@ -203,6 +225,9 @@ func numIn(name string) (num int, err error) {
 	return
 }
 
+// Range(1, 140)
+// name: Range
+// params: 1, 160
 func trim(name, key string, s []string) (ts []interface{}, err error) {
 	ts = make([]interface{}, len(s), len(s)+1)
 	fn, ok := funcs[name]
@@ -213,6 +238,8 @@ func trim(name, key string, s []string) (ts []interface{}, err error) {
 	for i := 0; i < len(s); i++ {
 		var param interface{}
 		// skip *Validation and obj params
+		// valid.IP(
+		// fn.invoke(valid, object, 其他的params)
 		if param, err = magic(fn.Type().In(i+2), strings.TrimSpace(s[i])); err != nil {
 			return
 		}
@@ -241,6 +268,9 @@ func magic(t reflect.Type, s string) (i interface{}, err error) {
 	return
 }
 
+//
+// 将(v, obj, params...)组装成为一个数组
+//
 func mergeParam(v *Validation, obj interface{}, params []interface{}) []interface{} {
 	return append([]interface{}{v, obj}, params...)
 }

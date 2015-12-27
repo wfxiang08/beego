@@ -111,6 +111,9 @@ type controllerInfo struct {
 }
 
 // ControllerRegistor containers registered router rules, controller handlers and filters.
+// Controller和Fitler如何管理呢?
+// Routers?
+//
 type ControllerRegistor struct {
 	routers      map[string]*Tree
 	enableFilter bool
@@ -135,10 +138,16 @@ func NewControllerRegister() *ControllerRegistor {
 //	Add("/api/delete",&RestController{},"delete:DeleteFood")
 //	Add("/api",&RestController{},"get,post:ApiFunc")
 //	Add("/simple",&SimpleController{},"get:GetFunc;post:PostFunc")
+//
+// 如何定制: ControllerRegistor呢?
+// BeeApp.Handlers.Add(rootpath, c, mappingMethods...)
+//
 func (p *ControllerRegistor) Add(pattern string, c ControllerInterface, mappingMethods ...string) {
-	reflectVal := reflect.ValueOf(c)
+	reflectVal := reflect.ValueOf(c) //
 	t := reflect.Indirect(reflectVal).Type()
 	methods := make(map[string]string)
+
+	// mappingMethods 可以指定，也可以不指定；如果指定多个，则最多也只使用第一个
 	if len(mappingMethods) > 0 {
 		semi := strings.Split(mappingMethods[0], ";")
 		for _, v := range semi {
@@ -146,8 +155,12 @@ func (p *ControllerRegistor) Add(pattern string, c ControllerInterface, mappingM
 			if len(colon) != 2 {
 				panic("method mapping format is invalid")
 			}
+
+			// colon[0]: method list
+			// colon[1]: Func
 			comma := strings.Split(colon[0], ",")
 			for _, m := range comma {
+				// Method: 最终统一变成 UPPER CASE
 				if _, ok := HTTPMETHOD[strings.ToUpper(m)]; m == "*" || ok {
 					if val := reflectVal.MethodByName(colon[1]); val.IsValid() {
 						methods[strings.ToUpper(m)] = colon[1]
@@ -164,14 +177,22 @@ func (p *ControllerRegistor) Add(pattern string, c ControllerInterface, mappingM
 	route := &controllerInfo{}
 	route.pattern = pattern
 	route.methods = methods
+	// 如何Router呢?
 	route.routerType = routerTypeBeego
+	// 获取Controller的类型
 	route.controllerType = t
+
 	if len(methods) == 0 {
+		// 如果没有指定: methods, 那么如何处理呢?
 		for _, m := range HTTPMETHOD {
+			//
+			// Add("/user",&UserController{})
+			//
 			p.addToRouter(m, pattern, route)
 		}
 	} else {
 		for k := range methods {
+			// 不限定: method
 			if k == "*" {
 				for _, m := range HTTPMETHOD {
 					p.addToRouter(m, pattern, route)
@@ -183,6 +204,10 @@ func (p *ControllerRegistor) Add(pattern string, c ControllerInterface, mappingM
 	}
 }
 
+//
+// 如何管理: Router呢?
+// Tree的管理
+//
 func (p *ControllerRegistor) addToRouter(method, pattern string, r *controllerInfo) {
 	if !RouterCaseSensitive {
 		pattern = strings.ToLower(pattern)
@@ -575,6 +600,11 @@ func (p *ControllerRegistor) geturl(t *Tree, url, controllName, methodName strin
 }
 
 // Implement http.Handler interface.
+//
+// ControllerRegistor 实现了Handler 接口
+//		type Handler interface {
+//			ServeHTTP(ResponseWriter, *Request)
+//		}
 func (p *ControllerRegistor) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	starttime := time.Now()
 	var runrouter reflect.Type
@@ -584,10 +614,12 @@ func (p *ControllerRegistor) ServeHTTP(rw http.ResponseWriter, r *http.Request) 
 
 	w := &responseWriter{writer: rw}
 
+	// 在Response Header中输出: Server
 	if RunMode == "dev" {
 		w.Header().Set("Server", BeegoServerName)
 	}
 
+	// 1.  准备Context
 	// init context
 	context := &beecontext.Context{
 		ResponseWriter: w,
@@ -598,29 +630,39 @@ func (p *ControllerRegistor) ServeHTTP(rw http.ResponseWriter, r *http.Request) 
 	context.Output.Context = context
 	context.Output.EnableGzip = EnableGzip
 
+	// 如果出现Panic, 那该如何处理呢?
 	defer p.recoverPanic(context)
 
+	// 2. urlPath
 	var urlPath string
 	if !RouterCaseSensitive {
 		urlPath = strings.ToLower(r.URL.Path)
 	} else {
 		urlPath = r.URL.Path
 	}
+
+	// 3. 为每一个请求定制: do_filter
 	// defined filter function
 	do_filter := func(pos int) (started bool) {
 		if p.enableFilter {
+			// 执行某个阶段(pos)的filters
 			if l, ok := p.filters[pos]; ok {
 				for _, filterR := range l {
+					// 如果发现: Writer中已经开始写数据，则直接返回
 					if filterR.returnOnOutput && w.started {
 						return true
 					}
+
+					// 验证urlPath是否可以进行Filter
 					if ok, params := filterR.ValidRouter(urlPath); ok {
+						// 将Fitler返回的参数拷贝到 context.Input.Params中
 						for k, v := range params {
 							if context.Input.Params == nil {
-								context.Input.Params = make(map[string]string)	
+								context.Input.Params = make(map[string]string)
 							}
 							context.Input.Params[k] = v
 						}
+						// 调用: filterFunc
 						filterR.filterFunc(context)
 					}
 					if filterR.returnOnOutput && w.started {
@@ -638,17 +680,21 @@ func (p *ControllerRegistor) ServeHTTP(rw http.ResponseWriter, r *http.Request) 
 		goto Admin
 	}
 
-	// filter for static file
+	// 1. filter for static file
 	if do_filter(BeforeStatic) {
 		goto Admin
 	}
 
+	// 2. 处理 static 文件
 	serverStaticRouter(context)
+	// 如果有有效的 static文件，则started == true
 	if w.started {
 		findrouter = true
 		goto Admin
 	}
 
+	// 3. 在Request处理流程中设置的: Session
+	// 注意: defer的执行顺序
 	// session init
 	if SessionOn {
 		var err error
@@ -663,6 +709,7 @@ func (p *ControllerRegistor) ServeHTTP(rw http.ResponseWriter, r *http.Request) 
 		}()
 	}
 
+	// 4. 对于其他的请求，准备解析POST数据
 	if r.Method != "GET" && r.Method != "HEAD" {
 		if CopyRequestBody && !context.Input.IsUpload() {
 			context.Input.CopyBody()
@@ -829,6 +876,7 @@ func (p *ControllerRegistor) ServeHTTP(rw http.ResponseWriter, r *http.Request) 
 Admin:
 	timeend := time.Since(starttime)
 	//admin module record QPS
+	// 统计QPS
 	if EnableAdmin {
 		if FilterMonitorFunc(r.Method, r.URL.Path, timeend) {
 			if runrouter != nil {
@@ -839,6 +887,7 @@ Admin:
 		}
 	}
 
+	// 打印AccessLogs
 	if RunMode == "dev" || AccessLogs {
 		var devinfo string
 		if findrouter {
@@ -917,6 +966,7 @@ func (w *responseWriter) Write(p []byte) (int, error) {
 // WriteHeader sends an HTTP response header with status code,
 // and sets `started` to true.
 func (w *responseWriter) WriteHeader(code int) {
+	// writeHeader之后就不能再writerHeader
 	w.status = code
 	w.started = true
 	w.writer.WriteHeader(code)
@@ -931,6 +981,10 @@ func (w *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return hj.Hijack()
 }
 
+// ToUrl
+// params: <key, value>
+// key1=value1&key2=value2&...
+//
 func tourl(params map[string]string) string {
 	if len(params) == 0 {
 		return ""

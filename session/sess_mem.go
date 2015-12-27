@@ -21,6 +21,9 @@ import (
 	"time"
 )
 
+//
+// 似乎为一个: LRU
+//
 var mempder = &MemProvider{list: list.New(), sessions: make(map[string]*list.Element)}
 
 // memory session store.
@@ -63,6 +66,8 @@ func (st *MemSessionStore) Delete(key interface{}) error {
 func (st *MemSessionStore) Flush() error {
 	st.lock.Lock()
 	defer st.lock.Unlock()
+
+	// 只是清空和 sid 对应的数据
 	st.value = make(map[interface{}]interface{})
 	return nil
 }
@@ -76,6 +81,9 @@ func (st *MemSessionStore) SessionID() string {
 func (st *MemSessionStore) SessionRelease(w http.ResponseWriter) {
 }
 
+//
+// 实现不同的Session的管理
+//
 type MemProvider struct {
 	lock        sync.RWMutex             // locker
 	sessions    map[string]*list.Element // map in memory
@@ -95,12 +103,17 @@ func (pder *MemProvider) SessionInit(maxlifetime int64, savePath string) error {
 func (pder *MemProvider) SessionRead(sid string) (SessionStore, error) {
 	pder.lock.RLock()
 	if element, ok := pder.sessions[sid]; ok {
+		// 异步更新数据
+		// 为什么不同步执行呢? 因为Lock的类型不一样
 		go pder.SessionUpdate(sid)
+
 		pder.lock.RUnlock()
 		return element.Value.(*MemSessionStore), nil
 	} else {
 		pder.lock.RUnlock()
 		pder.lock.Lock()
+
+		// 不存在对应的Session, 则新建一个Session
 		newsess := &MemSessionStore{sid: sid, timeAccessed: time.Now(), value: make(map[interface{}]interface{})}
 		element := pder.list.PushBack(newsess)
 		pder.sessions[sid] = element
@@ -124,9 +137,12 @@ func (pder *MemProvider) SessionExist(sid string) bool {
 func (pder *MemProvider) SessionRegenerate(oldsid, sid string) (SessionStore, error) {
 	pder.lock.RLock()
 	if element, ok := pder.sessions[oldsid]; ok {
+		// 更新oldsid对应的Item
 		go pder.SessionUpdate(oldsid)
 		pder.lock.RUnlock()
-		pder.lock.Lock()
+		pder.lock.Lock() // 谁先获取lock呢? 如果是上面先获取，则OK; 否则逻辑上出现问题
+
+		// 切换: sid, 删除 oldsid
 		element.Value.(*MemSessionStore).sid = sid
 		pder.sessions[sid] = element
 		delete(pder.sessions, oldsid)
@@ -135,6 +151,7 @@ func (pder *MemProvider) SessionRegenerate(oldsid, sid string) (SessionStore, er
 	} else {
 		pder.lock.RUnlock()
 		pder.lock.Lock()
+		//  不存在oldsid, 则直接添加新的sid
 		newsess := &MemSessionStore{sid: sid, timeAccessed: time.Now(), value: make(map[interface{}]interface{})}
 		element := pder.list.PushBack(newsess)
 		pder.sessions[sid] = element
@@ -165,10 +182,13 @@ func (pder *MemProvider) SessionGC() {
 		}
 		if (element.Value.(*MemSessionStore).timeAccessed.Unix() + pder.maxlifetime) < time.Now().Unix() {
 			pder.lock.RUnlock()
+
+			// 注意Lock的使用
 			pder.lock.Lock()
 			pder.list.Remove(element)
 			delete(pder.sessions, element.Value.(*MemSessionStore).sid)
 			pder.lock.Unlock()
+
 			pder.lock.RLock()
 		} else {
 			break
@@ -186,6 +206,7 @@ func (pder *MemProvider) SessionAll() int {
 func (pder *MemProvider) SessionUpdate(sid string) error {
 	pder.lock.Lock()
 	defer pder.lock.Unlock()
+	// 异步更新: element的 timeAccessed以及调整它在LRU中的位置
 	if element, ok := pder.sessions[sid]; ok {
 		element.Value.(*MemSessionStore).timeAccessed = time.Now()
 		pder.list.MoveToFront(element)
@@ -194,6 +215,7 @@ func (pder *MemProvider) SessionUpdate(sid string) error {
 	return nil
 }
 
+// 在 init 中注册: provider
 func init() {
 	Register("memory", mempder)
 }

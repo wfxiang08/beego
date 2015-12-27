@@ -29,6 +29,7 @@ type JsonConfig struct {
 
 // Parse returns a ConfigContainer with parsed json config map.
 func (js *JsonConfig) Parse(filename string) (ConfigContainer, error) {
+	// 接口适配，和ini相反，这里以data[]byte作为具体的implementation
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -44,11 +45,18 @@ func (js *JsonConfig) Parse(filename string) (ConfigContainer, error) {
 
 // ParseData returns a ConfigContainer with json string
 func (js *JsonConfig) ParseData(data []byte) (ConfigContainer, error) {
+	// 注意: data的格式
+	// 和ini不一样，ini没有具体的类型，一切由用户自己来确定
+	// json本身支持数据类型，因此使用: interface{}来表示
+	//
 	x := &JsonConfigContainer{
 		data: make(map[string]interface{}),
 	}
 	err := json.Unmarshal(data, &x.data)
 	if err != nil {
+		// JSON两种格式:
+		// 要么为Dict
+		// 要么为List
 		var wrappingArray []interface{}
 		err2 := json.Unmarshal(data, &wrappingArray)
 		if err2 != nil {
@@ -91,6 +99,8 @@ func (c *JsonConfigContainer) DefaultBool(key string, defaultval bool) bool {
 func (c *JsonConfigContainer) Int(key string) (int, error) {
 	val := c.getData(key)
 	if val != nil {
+		// 直接做类型转换
+		// 为什么使用 float64来转换?
 		if v, ok := val.(float64); ok {
 			return int(v), nil
 		}
@@ -245,6 +255,8 @@ func (c *JsonConfigContainer) getData(key string) interface{} {
 		if !ok {
 			return nil
 		}
+
+		// JSON格式支持嵌套，对应的格式: map[string]interface{}
 		for _, key := range sectionKeys[1:] {
 			if v, ok := curValue.(map[string]interface{}); ok {
 				if curValue, ok = v[key]; !ok {

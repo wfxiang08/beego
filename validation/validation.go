@@ -107,7 +107,7 @@ type Validation struct {
 // Clean all ValidationError.
 func (v *Validation) Clear() {
 	v.Errors = []*ValidationError{}
- 	v.ErrorsMap = nil
+	v.ErrorsMap = nil
 }
 
 // Has ValidationError nor not.
@@ -233,11 +233,16 @@ func (v *Validation) ZipCode(obj interface{}, key string) *ValidationResult {
 	return v.apply(ZipCode{Match{Regexp: zipCodePattern}, key}, obj)
 }
 
+//
+// 通用的Validator工作流程
+//
 func (v *Validation) apply(chk Validator, obj interface{}) *ValidationResult {
+	// 1. 验证OK
 	if chk.IsSatisfied(obj) {
 		return &ValidationResult{Ok: true}
 	}
 
+	// 2. 处理出错流程
 	// Add the error to the validation context.
 	key := chk.GetKey()
 	Name := key
@@ -291,6 +296,7 @@ func (v *Validation) Check(obj interface{}, checks ...Validator) *ValidationResu
 	var result *ValidationResult
 	for _, check := range checks {
 		result = v.apply(check, obj)
+		// 只要第一个发现问题，就立即返回
 		if !result.Ok {
 			return result
 		}
@@ -301,8 +307,10 @@ func (v *Validation) Check(obj interface{}, checks ...Validator) *ValidationResu
 // Validate a struct.
 // the obj parameter must be a struct or a struct pointer
 func (v *Validation) Valid(obj interface{}) (b bool, err error) {
+	// ValueOf 是什么意思?
 	objT := reflect.TypeOf(obj)
 	objV := reflect.ValueOf(obj)
+
 	switch {
 	case isStruct(objT):
 	case isStructPtr(objT):
@@ -313,19 +321,23 @@ func (v *Validation) Valid(obj interface{}) (b bool, err error) {
 		return
 	}
 
+	//
+	// 上面的代码在做啥呢?
+	//
 	for i := 0; i < objT.NumField(); i++ {
+		// 遍历objT的字段, 发现一个错误就返回
 		var vfs []ValidFunc
 		if vfs, err = getValidFuncs(objT.Field(i)); err != nil {
 			return
 		}
 		for _, vf := range vfs {
-			if _, err = funcs.Call(vf.Name,
-				mergeParam(v, objV.Field(i).Interface(), vf.Params)...); err != nil {
+			if _, err = funcs.Call(vf.Name, mergeParam(v, objV.Field(i).Interface(), vf.Params)...); err != nil {
 				return
 			}
 		}
 	}
 
+	// ValidFormer是什么东西呢?
 	if !v.HasErrors() {
 		if form, ok := obj.(ValidFormer); ok {
 			form.Valid(v)
