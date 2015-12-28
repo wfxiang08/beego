@@ -103,7 +103,7 @@ type alias struct {
 	DataSource   string
 	MaxIdleConns int
 	MaxOpenConns int
-	DB           *sql.DB
+	DB           *sql.DB // 参考定义: 数据库Connection Pool, Concurrency safe
 	DbBaser      dbBaser
 	TZ           *time.Location
 	Engine       string

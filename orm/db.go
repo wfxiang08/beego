@@ -354,6 +354,8 @@ func (d *dbBase) Read(q dbQuerier, mi *modelInfo, ind reflect.Value, tz *time.Lo
 // execute insert sql dbQuerier with given struct reflect.Value.
 func (d *dbBase) Insert(q dbQuerier, mi *modelInfo, ind reflect.Value, tz *time.Location) (int64, error) {
 	names := make([]string, 0, len(mi.fields.dbcols)-1)
+
+	// 获取对应的names, values(和数据库SQL更加接近了)
 	values, err := d.collectValues(mi, ind, mi.fields.dbcols, true, true, &names, tz)
 	if err != nil {
 		return 0, err
@@ -439,11 +441,13 @@ func (d *dbBase) InsertValue(q dbQuerier, mi *modelInfo, isMulti bool, names []s
 		qmarks = strings.Repeat(qmarks+"), (", multi-1) + qmarks
 	}
 
+	// 构建SQL
 	query := fmt.Sprintf("INSERT INTO %s%s%s (%s%s%s) VALUES (%s)", Q, mi.table, Q, Q, columns, Q, qmarks)
 
 	d.ins.ReplaceMarks(&query)
 
 	if isMulti || !d.ins.HasReturningID(mi, &query) {
+		// 添加数据
 		if res, err := q.Exec(query, values...); err == nil {
 			if isMulti {
 				return res.RowsAffected()

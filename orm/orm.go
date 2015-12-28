@@ -99,6 +99,9 @@ func (o *orm) getMiInd(md interface{}, needPtr bool) (mi *modelInfo, ind reflect
 		panic(fmt.Errorf("<Ormer> cannot use non-ptr model struct `%s`", getFullName(typ)))
 	}
 	name := getFullName(typ)
+
+	// mi 为 ModelInfo
+	// ind 为 Indirect信息
 	if mi, ok := modelCache.getByFN(name); ok {
 		return mi, ind
 	}
@@ -140,8 +143,11 @@ func (o *orm) ReadOrCreate(md interface{}, col1 string, cols ...string) (bool, i
 
 // insert model data to database
 func (o *orm) Insert(md interface{}) (int64, error) {
+	// 新增数据
 	mi, ind := o.getMiInd(md, true)
+
 	id, err := o.alias.DbBaser.Insert(o.db, mi, ind, o.alias.TZ)
+
 	if err != nil {
 		return id, err
 	}
@@ -417,11 +423,13 @@ func (o *orm) Using(name string) error {
 	if o.isTx {
 		panic(fmt.Errorf("<Ormer.Using> transaction has been start, cannot change db"))
 	}
+	// 获取一个Alias信息
 	if al, ok := dataBaseCache.get(name); ok {
 		o.alias = al
 		if Debug {
 			o.db = newDbQueryLog(al, al.DB)
 		} else {
+			// 获取对应的DB(为Conn
 			o.db = al.DB
 		}
 	} else {
