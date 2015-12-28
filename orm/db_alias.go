@@ -201,6 +201,7 @@ func RegisterDataBase(aliasName, driverName, dataSource string, params ...int) e
 		al  *alias
 	)
 
+	// 打开db
 	db, err = sql.Open(driverName, dataSource)
 	if err != nil {
 		err = fmt.Errorf("register db `%s`, %s", aliasName, err.Error())

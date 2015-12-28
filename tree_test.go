@@ -16,6 +16,7 @@ package beego
 
 import "testing"
 
+// Pattern, RequestUrl --> 解析出来的结果: params
 type testinfo struct {
 	url        string
 	requesturl string
@@ -61,6 +62,7 @@ func init() {
 
 func TestTreeRouters(t *testing.T) {
 	for _, r := range routers {
+		// Tree如何使用
 		tr := NewTree()
 		tr.AddRouter(r.url, "astaxie")
 		obj, param := tr.Match(r.requesturl)
@@ -69,6 +71,7 @@ func TestTreeRouters(t *testing.T) {
 		}
 		if r.params != nil {
 			for k, v := range r.params {
+				// 所有的r.params都应该在: params中出现，并且value相同
 				if vv, ok := param[k]; !ok {
 					t.Fatal(r.url + "    " + r.requesturl + " get param empty:" + k)
 				} else if vv != v {
@@ -79,10 +82,14 @@ func TestTreeRouters(t *testing.T) {
 	}
 }
 
+//
+// go test github.com/astaxie/beego -v -run "^TestAddTree$"
+//
 func TestAddTree(t *testing.T) {
 	tr := NewTree()
 	tr.AddRouter("/shop/:id/account", "astaxie")
 	tr.AddRouter("/shop/:sd/ttt_:id(.+)_:page(.+).html", "astaxie")
+
 	t1 := NewTree()
 	t1.AddTree("/v1/zl", tr)
 	obj, param := t1.Match("/v1/zl/shop/123/account")

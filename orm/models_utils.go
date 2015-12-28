@@ -30,6 +30,7 @@ func getFullName(typ reflect.Type) string {
 // get table name. method, or field name. auto snaked.
 func getTableName(val reflect.Value) string {
 	ind := reflect.Indirect(val)
+	// 如果指定了TableName, 则调用:
 	fun := val.MethodByName("TableName")
 	if fun.IsValid() {
 		vals := fun.Call([]reflect.Value{})

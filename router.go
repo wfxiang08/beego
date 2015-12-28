@@ -75,19 +75,25 @@ var (
 	DefaultLogFilter FilterHandler = &logFilter{}
 )
 
+//
+// Filter的定义
+//
 type FilterHandler interface {
 	Filter(*beecontext.Context) bool
 }
 
+// logFilter的定义
 // default log filter static file will not show
 type logFilter struct {
 }
 
 func (l *logFilter) Filter(ctx *beecontext.Context) bool {
 	requestPath := path.Clean(ctx.Input.Request.URL.Path)
+	// 如果是 favicon和robots.txt 则不记录日志
 	if requestPath == "/favicon.ico" || requestPath == "/robots.txt" {
 		return true
 	}
+	// 如果是静态文件，则也不记录（Filter掉)
 	for prefix := range StaticDir {
 		if strings.HasPrefix(requestPath, prefix) {
 			return true
@@ -146,6 +152,8 @@ func (p *ControllerRegistor) Add(pattern string, c ControllerInterface, mappingM
 	reflectVal := reflect.ValueOf(c) //
 	t := reflect.Indirect(reflectVal).Type()
 	methods := make(map[string]string)
+	// GET --> GetFunc
+	// *   --> GetFunc
 
 	// mappingMethods 可以指定，也可以不指定；如果指定多个，则最多也只使用第一个
 	if len(mappingMethods) > 0 {
@@ -177,6 +185,9 @@ func (p *ControllerRegistor) Add(pattern string, c ControllerInterface, mappingM
 	route := &controllerInfo{}
 	route.pattern = pattern
 	route.methods = methods
+	// GET --> GetFunc
+	// *   --> GetFunc
+
 	// 如何Router呢?
 	route.routerType = routerTypeBeego
 	// 获取Controller的类型
@@ -184,6 +195,7 @@ func (p *ControllerRegistor) Add(pattern string, c ControllerInterface, mappingM
 
 	if len(methods) == 0 {
 		// 如果没有指定: methods, 那么如何处理呢?
+		// 按照: Restful接口方式来处理
 		for _, m := range HTTPMETHOD {
 			//
 			// Add("/user",&UserController{})
@@ -209,9 +221,12 @@ func (p *ControllerRegistor) Add(pattern string, c ControllerInterface, mappingM
 // Tree的管理
 //
 func (p *ControllerRegistor) addToRouter(method, pattern string, r *controllerInfo) {
+	// 是否大小写敏感(一般URL都采用小写字母)
 	if !RouterCaseSensitive {
 		pattern = strings.ToLower(pattern)
 	}
+
+	// method --> Tree --> (pattern, controllerInfo)
 	if t, ok := p.routers[method]; ok {
 		t.AddRouter(pattern, r)
 	} else {

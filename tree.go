@@ -15,6 +15,7 @@
 package beego
 
 import (
+	"fmt"
 	"path"
 	"regexp"
 	"strings"
@@ -23,13 +24,13 @@ import (
 )
 
 type Tree struct {
-	//search fix route first
+	// search fix route first
 	fixrouters map[string]*Tree
 
-	//if set, failure to match fixrouters search then search wildcard
+	// if set, failure to match fixrouters search then search wildcard
 	wildcard *Tree
 
-	//if set, failure to match wildcard search
+	// if set, failure to match wildcard search
 	leaves []*leafInfo
 }
 
@@ -53,6 +54,8 @@ func (t *Tree) addtree(segments []string, tree *Tree, wildcards []string, reg st
 	iswild, params, regexpStr := splitSegment(seg)
 	if len(segments) == 1 {
 		if iswild {
+			// 如果有正则，并且对应的regex非空
+			// 例如: ":name:string" -> true, [:name], ([\w]+)
 			if regexpStr != "" {
 				if reg == "" {
 					rr := ""
@@ -61,8 +64,10 @@ func (t *Tree) addtree(segments []string, tree *Tree, wildcards []string, reg st
 							continue
 						}
 						if w == ":splat" {
+							// 全匹配
 							rr = rr + "(.+)/"
 						} else {
+							// 匹配： ^/
 							rr = rr + "([^/]+)/"
 						}
 					}
@@ -86,6 +91,7 @@ func (t *Tree) addtree(segments []string, tree *Tree, wildcards []string, reg st
 			filterTreeWithPrefix(tree, append(wildcards, params...), reg)
 			t.wildcard = tree
 		} else {
+			// 如果没有正则
 			reg = strings.Trim(reg+"/"+regexpStr, "/")
 			filterTreeWithPrefix(tree, append(wildcards, params...), reg)
 			t.fixrouters[seg] = tree
@@ -189,12 +195,20 @@ func filterTreeWithPrefix(t *Tree, wildcards []string, reg string) {
 
 // call addseg function
 func (t *Tree) AddRouter(pattern string, runObject interface{}) {
+	// splitPath的定义
 	t.addseg(splitPath(pattern), runObject, nil, "")
 }
 
 // "/"
 // "admin" ->
+// Segments: [shop :id account], route: astaxie, wildcards: [], reg:
+// Segments: [:id account], route: astaxie, wildcards: [], reg:
+// Segments: [account], route: astaxie, wildcards: [:id], reg:
+// Segments: [], route: astaxie, wildcards: [:id], reg:
+//
 func (t *Tree) addseg(segments []string, route interface{}, wildcards []string, reg string) {
+	fmt.Printf("Segments: %v, route: %v, wildcards: %v, reg: %s\n", segments, route, wildcards, reg)
+	// 场景1： 不带正则的，都是fixed
 	if len(segments) == 0 {
 		if reg != "" {
 			filterCards := []string{}
@@ -206,11 +220,19 @@ func (t *Tree) addseg(segments []string, route interface{}, wildcards []string, 
 			}
 			t.leaves = append(t.leaves, &leafInfo{runObject: route, wildcards: filterCards, regexps: regexp.MustCompile("^" + reg + "$")})
 		} else {
+			// 添加: leaves, 区分元素: wildcards
+			// 如果所有的URL都固定， 例如: /user/meta_info/, wildcards为nil
 			t.leaves = append(t.leaves, &leafInfo{runObject: route, wildcards: wildcards})
 		}
 	} else {
 		seg := segments[0]
+
+		// [:id account]
+		// true, [:id], ""
 		iswild, params, regexpStr := splitSegment(seg)
+
+		fmt.Printf("iswild: %v params: %v regexpStr: %v\n", iswild, params, regexpStr)
+
 		//for the router  /login/*/access match /login/2009/11/access
 		if !iswild && utils.InSlice(":splat", wildcards) {
 			iswild = true
@@ -221,6 +243,7 @@ func (t *Tree) addseg(segments []string, route interface{}, wildcards []string, 
 			regexpStr = "(.+)"
 		}
 		if iswild {
+			// 如果带有: wild, 那如何处理呢?
 			if t.wildcard == nil {
 				t.wildcard = NewTree()
 			}
@@ -254,13 +277,23 @@ func (t *Tree) addseg(segments []string, route interface{}, wildcards []string, 
 					}
 				}
 			}
+
+			// wildcard的leaves的区分:
+			// [:id account]
+
+			// 如果带有wildcard, 那么我们把它放在: wildcard Tree中
+			// 优先匹配: 剩下的segments
 			t.wildcard.addseg(segments[1:], route, append(wildcards, params...), reg+regexpStr)
 		} else {
+			// 如果: seg 中没有正则，则添加一个subTree
 			subTree, ok := t.fixrouters[seg]
 			if !ok {
 				subTree = NewTree()
 				t.fixrouters[seg] = subTree
 			}
+
+			// segments往后推进
+			// route: Controller的实例
 			subTree.addseg(segments[1:], route, wildcards, reg)
 		}
 	}
@@ -275,14 +308,24 @@ func (t *Tree) Match(pattern string) (runObject interface{}, params map[string]s
 	return t.match(splitPath(pattern), nil)
 }
 
+//
+// Tree如何 match 呢?
+//
 func (t *Tree) match(segments []string, wildcardValues []string) (runObject interface{}, params map[string]string) {
+	fmt.Printf("segments: %v, wildcardValues: %v\n", segments, wildcardValues)
+
 	// Handle leaf nodes:
 	if len(segments) == 0 {
+		// leaves级别的匹配
+		// 按照: wildcardValues来匹配
+		// 如果没有: wildcardValues那如何处理呢?
 		for _, l := range t.leaves {
 			if ok, pa := l.match(wildcardValues); ok {
 				return l.runObject, pa
 			}
 		}
+
+		// 如果: leaves不能匹配, 则交给更加general的wildcard去匹配
 		if t.wildcard != nil {
 			for _, l := range t.wildcard.leaves {
 				if ok, pa := l.match(wildcardValues); ok {
@@ -298,9 +341,12 @@ func (t *Tree) match(segments []string, wildcardValues []string) (runObject inte
 
 	subTree, ok := t.fixrouters[seg]
 	if ok {
+		// 如果是: fixrouter, 则直接进入subTree的匹配
 		runObject, params = subTree.match(segs, wildcardValues)
 	} else if len(segs) == 0 { //.json .xml
 		if subindex := strings.LastIndex(seg, "."); subindex != -1 {
+			// 再次匹配: fixrouters
+			// .json, .xml特殊情况
 			subTree, ok = t.fixrouters[seg[:subindex]]
 			if ok {
 				runObject, params = subTree.match(segs, wildcardValues)
@@ -308,16 +354,21 @@ func (t *Tree) match(segments []string, wildcardValues []string) (runObject inte
 					if params == nil {
 						params = make(map[string]string)
 					}
+					// 带有扩展名
 					params[":ext"] = seg[subindex+1:]
 					return runObject, params
 				}
 			}
 		}
 	}
+
+	// 如果: fixrouters匹配失败，那么转入: wildcard的匹配
 	if runObject == nil && t.wildcard != nil {
+		// append(wildcardValues, seg) 什么意思呢?
 		runObject, params = t.wildcard.match(segs, append(wildcardValues, seg))
 	}
 	if runObject == nil {
+		// 还是没有匹配，则进行: leaves的匹配（直接终止）
 		for _, l := range t.leaves {
 			if ok, pa := l.match(append(wildcardValues, segments...)); ok {
 				return l.runObject, pa
@@ -327,6 +378,7 @@ func (t *Tree) match(segments []string, wildcardValues []string) (runObject inte
 	return runObject, params
 }
 
+// Tree的叶子信息
 type leafInfo struct {
 	// names of wildcards that lead to this leaf. eg, ["id" "name"] for the wildcard ":id" and ":name"
 	wildcards []string
@@ -338,6 +390,7 @@ type leafInfo struct {
 }
 
 func (leaf *leafInfo) match(wildcardValues []string) (ok bool, params map[string]string) {
+	// 暂不考虑:
 	if leaf.regexps == nil {
 		// has error
 		if len(wildcardValues) == 0 && len(leaf.wildcards) > 0 {
@@ -355,6 +408,7 @@ func (leaf *leafInfo) match(wildcardValues []string) (ok bool, params map[string
 			}
 			return false, nil
 		} else if len(wildcardValues) == 0 { // static path
+			// 不存在通配符的情况
 			return true, nil
 		}
 		// match *
@@ -410,11 +464,16 @@ func (leaf *leafInfo) match(wildcardValues []string) (ok bool, params map[string
 		return true, params
 	}
 
-	if !leaf.regexps.MatchString(path.Join(wildcardValues...)) {
+	// 让: regexps 和 wildcardValues做匹配
+	wcVs := path.Join(wildcardValues...)
+	if !leaf.regexps.MatchString(wcVs) {
 		return false, nil
 	}
+
+	// 匹配OK了
 	params = make(map[string]string)
-	matches := leaf.regexps.FindStringSubmatch(path.Join(wildcardValues...))
+	matches := leaf.regexps.FindStringSubmatch(wcVs)
+	// match group 和 对应的  key 匹配
 	for i, match := range matches[1:] {
 		params[leaf.wildcards[i]] = match
 	}
@@ -439,6 +498,7 @@ func splitPath(key string) []string {
 	return elements
 }
 
+// 如果没有参数，或者只有一个参数，全匹配，则reg为""
 // "admin" -> false, nil, ""
 // ":id" -> true, [:id], ""
 // "?:id" -> true, [: :id], ""        : meaning can empty
@@ -450,6 +510,10 @@ func splitPath(key string) []string {
 // "*" -> true, [:splat], ""
 // "*.*" -> true,[. :path :ext], ""      . meaning separator
 func splitSegment(key string) (bool, []string, string) {
+	// 1. 两种不同的*
+	// *
+	// *.*
+	// 其他的，例如: *xxx, 直接被当做当个的*
 	if strings.HasPrefix(key, "*") {
 		if key == "*.*" {
 			return true, []string{".", ":path", ":ext"}, ""
@@ -457,6 +521,8 @@ func splitSegment(key string) (bool, []string, string) {
 			return true, []string{":splat"}, ""
 		}
 	}
+
+	// 2. 是否包含 params
 	if strings.ContainsAny(key, ":") {
 		var paramsNum int
 		var out []rune
@@ -466,6 +532,8 @@ func splitSegment(key string) (bool, []string, string) {
 		var expt []rune
 		var skipnum int
 		params := []string{}
+
+		// 普通的标识符的patten
 		reg := regexp.MustCompile(`[a-zA-Z0-9_]+`)
 		for i, v := range key {
 			if skipnum > 0 {
@@ -473,6 +541,7 @@ func splitSegment(key string) (bool, []string, string) {
 				continue
 			}
 			if start {
+				// 开始识别: param之后，解析来可能是类型
 				//:id:int and :name:string
 				if v == ':' {
 					if len(key) >= i+4 {
@@ -505,6 +574,8 @@ func splitSegment(key string) (bool, []string, string) {
 					param = append(param, v)
 					continue
 				}
+
+				// 如果不是 ":", 也不是正常字符，也不是: "(", 那说明旧的param结束了
 				if v != '(' {
 					out = append(out, []rune(`(.+)`)...)
 					params = append(params, ":"+string(param))
@@ -515,6 +586,7 @@ func splitSegment(key string) (bool, []string, string) {
 				}
 			}
 			if startexp {
+				// 直接获取 exp
 				if v != ')' {
 					expt = append(expt, v)
 					continue

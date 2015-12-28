@@ -25,6 +25,7 @@ import (
 // register models.
 // prefix means table name prefix.
 func registerModel(prefix string, model interface{}) {
+	// 如何注册Model呢?
 	val := reflect.ValueOf(model)
 	ind := reflect.Indirect(val)
 	typ := ind.Type()
@@ -33,28 +34,35 @@ func registerModel(prefix string, model interface{}) {
 		panic(fmt.Errorf("<orm.RegisterModel> cannot use non-ptr model struct `%s`", getFullName(typ)))
 	}
 
+	// TableName
+	// ModelName --> model_name
 	table := getTableName(val)
 
 	if prefix != "" {
 		table = prefix + table
 	}
 
+	// FullName如何定义?
+	// pkg path是如何定义的?
 	name := getFullName(typ)
 	if _, ok := modelCache.getByFN(name); ok {
 		fmt.Printf("<orm.RegisterModel> model `%s` repeat register, must be unique\n", name)
 		os.Exit(2)
 	}
 
+	// 奇怪
 	if _, ok := modelCache.get(table); ok {
 		fmt.Printf("<orm.RegisterModel> table name `%s` repeat register, must be unique\n", table)
 		os.Exit(2)
 	}
 
+	// Model必须包含唯一主键
 	info := newModelInfo(val)
 
 	if info.fields.pk == nil {
 	outFor:
 		for _, fi := range info.fields.fieldsDB {
+			// Id字段的特殊处理
 			if fi.name == "Id" {
 				if fi.sf.Tag.Get(defaultStructTagName) == "" {
 					switch fi.addrValue.Elem().Kind() {
@@ -80,6 +88,7 @@ func registerModel(prefix string, model interface{}) {
 	info.model = model
 	info.manual = true
 
+	// 记录: Model Info
 	modelCache.set(table, info)
 }
 
@@ -99,10 +108,15 @@ func bootStrap() {
 		goto end
 	}
 
+	// BootStrap做了什么事情呢?
+	// 完成Model Information之间的关联
 	models = modelCache.all()
 	for _, mi := range models {
+		// 对于每一个Model
 		for _, fi := range mi.fields.columns {
+			// 对于每一个Column, 如果存在外键?
 			if fi.rel || fi.reverse {
+				// 获取外键的类型
 				elm := fi.addrValue.Type().Elem()
 				switch fi.fieldType {
 				case RelReverseMany, RelManyToMany:
@@ -115,6 +129,8 @@ func bootStrap() {
 					err = fmt.Errorf("can not found rel in field `%s`, `%s` may be miss register", fi.fullName, elm.String())
 					goto end
 				}
+
+				// 关联: relModelInfo
 				fi.relModelInfo = mii
 
 				switch fi.fieldType {

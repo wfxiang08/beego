@@ -97,8 +97,10 @@ func (mc *_modelCache) getByFN(name string) (mi *modelInfo, ok bool) {
 // set model info to collection
 func (mc *_modelCache) set(table string, mi *modelInfo) *modelInfo {
 	mii := mc.cache[table]
+	// 这两个有什么区别呢?
 	mc.cache[table] = mi
 	mc.cacheByFN[mi.fullName] = mi
+
 	if mii == nil {
 		mc.orders = append(mc.orders, table)
 	}
